@@ -3,4 +3,5 @@
 # または、特定のコミットやフォークを指定することも検討:
 # TikTokLive @ git+https://github.com/isaackogan/TikTokLive.git@SOME_WORKING_COMMIT_OR_BRANCH
 # 利用者は実際に動作するバージョンまたはソースを検証し、ここに記載する必要があります
+TikTokLive==6.5.3
 pyserial>=3.5,<4.0.0
