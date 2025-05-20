@@ -152,6 +152,7 @@ async def main():
             gift_queue=gift_queue,
             reconnect_delay=config.getint("Application", "TIKTOK_RECONNECT_DELAY"),
             client_options=client_options,
+            stop_event=shutdown_event,
         )
         tiktok_detector_task = asyncio.create_task(detector.run())
         logger.info("TikTokギフト検知タスクを開始しました。")

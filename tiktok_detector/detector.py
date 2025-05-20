@@ -8,8 +8,16 @@ from TikTokLive.types.events import ConnectEvent, DisconnectEvent, GiftEvent
 logger = logging.getLogger(__name__)
 
 class TikTokGiftDetector:
-    def __init__(self, username: str, target_gift_name: str, target_gift_id: str,
-                gift_queue: asyncio.Queue, reconnect_delay: int, client_options: dict = None):
+    def __init__(
+        self,
+        username: str,
+        target_gift_name: str,
+        target_gift_id: str,
+        gift_queue: asyncio.Queue,
+        reconnect_delay: int,
+        client_options: dict | None = None,
+        stop_event: asyncio.Event | None = None,
+    ) -> None:
         """
         TikTokライブを監視し、特定のギフトを検知してキューに追加するクラス。
 
@@ -19,13 +27,15 @@ class TikTokGiftDetector:
         :param gift_queue: 検知したギフト情報を格納するasyncio.Queue。
         :param reconnect_delay: TikTok接続リトライ時の遅延時間（秒）。
         :param client_options: (オプション) TikTokLiveClientに追加で渡す設定。
-        署名サーバーの設定などがここに含まれる想定。
+            署名サーバーの設定などがここに含まれる想定。
+        :param stop_event: シャットダウン要求を検知するためのイベント。
         """
         self.username = username
         self.target_gift_name = target_gift_name
         self.target_gift_id = target_gift_id
         self.gift_queue = gift_queue
         self.reconnect_delay = reconnect_delay
+        self.stop_event = stop_event
 
         # TikTokLiveClientの初期化
         # 【最重要課題】署名サービスなどの追加パラメータが必要な場合、client_options経由で渡すか、
@@ -84,6 +94,9 @@ class TikTokGiftDetector:
     async def run(self):
         """TikTokライブの監視を開始・再開する無限ループ。"""
         while True:
+            if self.stop_event and self.stop_event.is_set():
+                logger.info("シャットダウン要求を受け取りました。TikTokギフト監視を終了します。")
+                break
             try:
                 logger.info(f"{self.username} のTikTok Live監視を開始します...")
                 # 既に接続されている場合の適切な処理 (TikTokLiveClientの仕様に依存)
@@ -97,6 +110,9 @@ class TikTokGiftDetector:
                 # もしstart()が予期せず終了した場合、再接続ロジックが働く
                 logger.warning(f"{self.username} のTikTok Live監視が停止しました。再接続を試みます...")
 
+            except asyncio.CancelledError:
+                logger.info("TikTokギフト検知タスクがキャンセルされました。")
+                raise
             except ConnectionRefusedError as e:
                 logger.error(f"TikTok Liveへの接続が拒否されました: {e}. {self.reconnect_delay}秒後に再試行します。", exc_info=True)
             except TimeoutError as e: # asyncio.TimeoutError or other specific TimeoutError
@@ -109,5 +125,4 @@ class TikTokGiftDetector:
 
             # どのような状況でstart()が終了したかに関わらず、次の試行まで待機
             # (正常終了時もここに来る可能性があるため、シャットダウン要求時以外は再試行する)
-            # TODO: シャットダウンフラグをみてループを抜ける処理を追加する
             await asyncio.sleep(self.reconnect_delay)
