@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.~
+*#
+.env
+env/
+venv/
+ENV/
+VENV/
+*.egg-info/
+.DS_Store
+
+# 設定ファイル (もしローカル固有の設定を含む場合で、テンプレートだけを管理したい場合)
+# config/settings.ini  # コメントアウトしておき、必要なら有効化。
+                        # 通常はサンプル設定(settings.ini.sampleなど)をGit管理し、
+                        # settings.ini自体はignoreすることが多い。
+                        # 今回はsettings.iniもバージョン管理対象として、
+                        # ユーザー名などは各自で書き換えてもらう想定でも良い。
+
+# ログファイル
+*.log
+app.log
+
+# IDE/エディタ固有のファイル
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# その他一時ファイル
+temp/
+tmp/
