@@ -15,6 +15,7 @@ logger = logging.getLogger()
 # グレースフルシャットダウンのためのイベント
 shutdown_event = asyncio.Event()
 
+
 def setup_logging(log_level_str: str, log_file_path_str: str):
     """ロギングを設定します。"""
     numeric_level = getattr(logging, log_level_str.upper(), None)
@@ -22,7 +23,9 @@ def setup_logging(log_level_str: str, log_file_path_str: str):
         logging.warning(f"無効なログレベル: {log_level_str}。INFOレベルを使用します。")
         numeric_level = logging.INFO
 
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
 
     # コンソールハンドラ
     console_handler = logging.StreamHandler(sys.stdout)
@@ -33,17 +36,22 @@ def setup_logging(log_level_str: str, log_file_path_str: str):
     if log_file_path_str:
         try:
             log_file_path = Path(log_file_path_str)
-            log_file_path.parent.mkdir(parents=True, exist_ok=True) # 必要ならディレクトリ作成
-            file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
+            log_file_path.parent.mkdir(
+                parents=True, exist_ok=True
+            )  # 必要ならディレクトリ作成
+            file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
             logger.info(f"ログをファイルに出力します: {log_file_path.resolve()}")
         except Exception as e:
-            logging.error(f"ログファイルハンドラの設定に失敗しました: {e}", exc_info=True)
+            logging.error(
+                f"ログファイルハンドラの設定に失敗しました: {e}", exc_info=True
+            )
             logging.warning("ログはコンソールのみに出力されます。")
 
     logger.setLevel(numeric_level)
     logger.info(f"ロギングレベルを {log_level_str.upper()} に設定しました。")
+
 
 def load_config(config_path: str) -> configparser.ConfigParser:
     """設定ファイルを読み込みます。"""
@@ -51,25 +59,33 @@ def load_config(config_path: str) -> configparser.ConfigParser:
     if not Path(config_path).exists():
         logger.error(f"設定ファイルが見つかりません: {config_path}")
         raise FileNotFoundError(f"設定ファイルが見つかりません: {config_path}")
-    
+
     try:
-        config.read(config_path, encoding='utf-8')
+        config.read(config_path, encoding="utf-8")
         # 必須セクションとキーの存在チェック (例)
         required_sections = {
             "TikTok": ["USERNAME", "TARGET_GIFT_NAME"],
             "Serial": ["PORT", "BAUD_RATE", "READY_SIGNAL", "GIFT_COMMAND"],
-            "Application": ["GIFT_PROCESS_COOLDOWN", "TIKTOK_RECONNECT_DELAY", 
-                            "MAX_GIFT_QUEUE_SIZE", "LOG_LEVEL"]
+            "Application": [
+                "GIFT_PROCESS_COOLDOWN",
+                "TIKTOK_RECONNECT_DELAY",
+                "MAX_GIFT_QUEUE_SIZE",
+                "LOG_LEVEL",
+            ],
         }
         for section, keys in required_sections.items():
             if not config.has_section(section):
-                raise ValueError(f"設定ファイルに必須セクション '{section}' がありません。")
+                raise ValueError(
+                    f"設定ファイルに必須セクション '{section}' がありません。"
+                )
             for key in keys:
                 if not config.has_option(section, key):
                     # TARGET_GIFT_ID はオプションなのでチェックから除外
-                    if section == "TikTok" and key == "TARGET_GIFT_ID": 
-                        continue 
-                    raise ValueError(f"設定ファイルセクション '{section}' に必須キー '{key}' がありません。")
+                    if section == "TikTok" and key == "TARGET_GIFT_ID":
+                        continue
+                    raise ValueError(
+                        f"設定ファイルセクション '{section}' に必須キー '{key}' がありません。"
+                    )
         logger.info(f"設定ファイルを読み込みました: {config_path}")
         return config
     except configparser.Error as e:
@@ -78,6 +94,7 @@ def load_config(config_path: str) -> configparser.ConfigParser:
     except ValueError as e:
         logger.error(f"設定ファイルの内容エラー: {e}", exc_info=True)
         raise
+
 
 async def main():
     """アプリケーションのメイン処理。"""
@@ -89,20 +106,22 @@ async def main():
         # 設定ファイルのパス (スクリプトの場所基準で config/settings.ini)
         base_dir = Path(__file__).resolve().parent
         config_file = base_dir / "config" / "settings.ini"
-        
+
         config = load_config(str(config_file))
 
         # ロギング設定
         log_level = config.get("Application", "LOG_LEVEL", fallback="INFO")
         log_file_path = config.get("Application", "LOG_FILE_PATH", fallback=None)
         setup_logging(log_level, log_file_path)
-        
+
         logger.info("アプリケーションを開始します...")
 
         # asyncioキューの初期化
         max_queue_size = config.getint("Application", "MAX_GIFT_QUEUE_SIZE", fallback=0)
         gift_queue = asyncio.Queue(maxsize=max_queue_size)
-        logger.info(f"ギフトキューを初期化しました (最大サイズ: {max_queue_size if max_queue_size > 0 else '無限'})。")
+        logger.info(
+            f"ギフトキューを初期化しました (最大サイズ: {max_queue_size if max_queue_size > 0 else '無限'})。"
+        )
 
         # SerialGiftProcessorの初期化と開始
         serial_processor = SerialGiftProcessor(
@@ -111,7 +130,7 @@ async def main():
             ready_signal=config.get("Serial", "READY_SIGNAL"),
             gift_command=config.get("Serial", "GIFT_COMMAND"),
             gift_queue=gift_queue,
-            process_cooldown=config.getfloat("Application", "GIFT_PROCESS_COOLDOWN")
+            process_cooldown=config.getfloat("Application", "GIFT_PROCESS_COOLDOWN"),
         )
         serial_processor.start_processing()
 
@@ -119,7 +138,7 @@ async def main():
         # TikTokLiveClientに追加オプションが必要な場合は、settings.iniにセクションを追加し、ここで読み込む
         # 例: client_options = {"signer_url": config.get("TikTokSigner", "URL", fallback=None)}
         # 現状は追加オプションなしで初期化
-        client_options = {} # 必要に応じて設定ファイルから読み込む
+        client_options = {}  # 必要に応じて設定ファイルから読み込む
         if config.has_section("TikTokClientOptions"):
             client_options = dict(config.items("TikTokClientOptions"))
             logger.info(f"TikTokLiveClientに追加オプションを渡します: {client_options}")
@@ -127,10 +146,12 @@ async def main():
         detector = TikTokGiftDetector(
             username=config.get("TikTok", "USERNAME"),
             target_gift_name=config.get("TikTok", "TARGET_GIFT_NAME"),
-            target_gift_id=config.get("TikTok", "TARGET_GIFT_ID", fallback=None), # fallbackでNoneを許容
+            target_gift_id=config.get(
+                "TikTok", "TARGET_GIFT_ID", fallback=None
+            ),  # fallbackでNoneを許容
             gift_queue=gift_queue,
             reconnect_delay=config.getint("Application", "TIKTOK_RECONNECT_DELAY"),
-            client_options=client_options
+            client_options=client_options,
         )
         tiktok_detector_task = asyncio.create_task(detector.run())
         logger.info("TikTokギフト検知タスクを開始しました。")
@@ -149,7 +170,9 @@ async def main():
         logging.basicConfig(level=logging.ERROR)
         logging.critical(f"設定エラー: {e}")
     except Exception as e:
-        logger.critical(f"予期せぬエラーによりメイン処理が停止しました: {e}", exc_info=True)
+        logger.critical(
+            f"予期せぬエラーによりメイン処理が停止しました: {e}", exc_info=True
+        )
     finally:
         logger.info("アプリケーションのシャットダウン処理を開始します...")
         if tiktok_detector_task and not tiktok_detector_task.done():
@@ -159,10 +182,14 @@ async def main():
                 await tiktok_detector_task
                 logger.info("TikTokギフト検知タスクは正常にキャンセルされました。")
             except asyncio.CancelledError:
-                logger.info("TikTokギフト検知タスクがキャンセルされました (asyncio.CancelledError)。")
+                logger.info(
+                    "TikTokギフト検知タスクがキャンセルされました (asyncio.CancelledError)。"
+                )
             except Exception as e:
-                logger.error(f"TikTokギフト検知タスクのキャンセル中にエラー: {e}", exc_info=True)
-        
+                logger.error(
+                    f"TikTokギフト検知タスクのキャンセル中にエラー: {e}", exc_info=True
+                )
+
         if serial_processor:
             logger.info("シリアルギフトプロセッサを停止します...")
             serial_processor.stop_processing()
@@ -170,13 +197,20 @@ async def main():
 
         logger.info("アプリケーションは正常にシャットダウンしました。")
 
+
 def signal_handler(sig, frame):
-    logger.info(f"シグナル {sig} を受信しました。グレースフルシャットダウンを開始します...")
+    logger.info(
+        f"シグナル {sig} を受信しました。グレースフルシャットダウンを開始します..."
+    )
     shutdown_event.set()
+
 
 if __name__ == "__main__":
     # 基本的なロガーを早期に設定 (設定ファイル読み込み前用)
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
 
     # シグナルハンドラの設定
     signal.signal(signal.SIGINT, signal_handler)
@@ -185,6 +219,10 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt を受信。アプリケーションを終了します。(asyncio.run外)")
+        logger.info(
+            "KeyboardInterrupt を受信。アプリケーションを終了します。(asyncio.run外)"
+        )
     except Exception as e:
-        logger.critical(f"asyncio.runの実行中に予期せぬエラーが発生しました: {e}", exc_info=True)
+        logger.critical(
+            f"asyncio.runの実行中に予期せぬエラーが発生しました: {e}", exc_info=True
+        )
