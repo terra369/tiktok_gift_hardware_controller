@@ -42,13 +42,12 @@ class SerialGiftProcessor:
         self._last_processed_time = 0
 
     def _initialize_serial(self) -> bool:
-        """シリアルポートを初期化して接続します。"""
         try:
             logger.info(
                 f"シリアルポート {self.port} (ボーレート: {self.baud_rate}) に接続試行中..."
             )
             self.serial_conn = serial.Serial(self.port, self.baud_rate, timeout=1)
-            time.sleep(2)  # Arduinoのリセット直後の安定化のため
+            time.sleep(2)
             logger.info(f"シリアルポート {self.port} に接続成功しました。")
             return True
         except serial.SerialException as e:
@@ -64,7 +63,6 @@ class SerialGiftProcessor:
             return False
 
     def _list_available_ports(self):
-        """利用可能なCOMポートをリスト表示します。"""
         ports = serial.tools.list_ports.comports()
         if ports:
             logger.info("利用可能なCOMポート:")
@@ -74,7 +72,6 @@ class SerialGiftProcessor:
             logger.info("利用可能なCOMポートが見つかりません。")
 
     def _process_gifts_loop(self):
-        """ギフト処理のメインループ（スレッドで実行）。"""
         logger.info("ギフト処理スレッドを開始します。")
         if not self._initialize_serial():
             logger.error(
@@ -90,7 +87,6 @@ class SerialGiftProcessor:
                 )
 
                 if self.serial_conn and self.serial_conn.is_open and can_process_gift:
-                    # ArduinoからのReady信号を待つ
                     if self.serial_conn.in_waiting > 0:
                         line = (
                             self.serial_conn.readline()
@@ -108,20 +104,18 @@ class SerialGiftProcessor:
 
                             command_to_send = (self.gift_command + "\n").encode("utf-8")
                             self.serial_conn.write(command_to_send)
-                            self.serial_conn.flush()  # 送信バッファをフラッシュ
+                            self.serial_conn.flush()
 
                             self._last_processed_time = time.time()
                             self.gift_queue.task_done()
                             logger.info(
                                 f"ギフトコマンド '{self.gift_command}' をArduinoに送信しました。ギフト: {gift_info['name']}"
                             )
-                        elif line:  # Ready信号ではないが何か受信した場合
+                        elif line:
                             logger.warning(
                                 f"Arduinoから予期しない信号を受信: '{line}' (期待値: '{self.ready_signal}')"
                             )
-                    else:  # in_waiting == 0
-                        # Ready信号を待っている間にCPUを過度に消費しないように
-                        # ただし、シリアルタイムアウト(timeout=1)があるので、readline()がブロックしすぎることはない
+                    else:
                         pass
                 elif not self.serial_conn or not self.serial_conn.is_open:
                     logger.warning("シリアル接続がありません。再接続を試みます...")
@@ -131,14 +125,10 @@ class SerialGiftProcessor:
                         logger.warning("シリアル再接続に失敗。5秒待機します。")
                         self._stop_event.wait(5)  # 停止イベントを待ちつつスリープ
 
-                # ループのCPU負荷軽減と応答性のバランス
-                # 頻繁なポーリングが必要な場合、このsleepは短くするか、より高度なイベントドリブンな方法を検討
                 time.sleep(0.1)
 
             except serial.SerialTimeoutException:
-                logger.debug(
-                    "シリアル読み取りタイムアウト"
-                )  # 通常動作の一部なのでdebugレベル
+                logger.debug("シリアル読み取りタイムアウト")
             except serial.SerialException as e:
                 logger.error(f"シリアル通信エラー: {e}", exc_info=True)
                 logger.info("シリアル再接続を試みます...")
@@ -148,25 +138,19 @@ class SerialGiftProcessor:
                     logger.error(
                         "シリアル再接続に失敗。スレッドを終了する可能性があります。5秒待機します。"
                     )
-                    # 深刻なエラーの場合、スレッドを終了させるか、より堅牢なリトライループが必要
                     self._stop_event.wait(5)
-            except (
-                asyncio.QueueEmpty
-            ):  # get_nowaitで発生しうるが、can_process_giftでチェック済み
-                pass  # キューが空なのは通常状態
+            except asyncio.QueueEmpty:
+                pass
             except Exception as e:
                 logger.error(f"ギフト処理ループで予期せぬエラー: {e}", exc_info=True)
-                # 予期せぬエラーの場合、クールダウンして再試行
                 self._stop_event.wait(5)
 
-        # ループ終了時の処理
         if self.serial_conn and self.serial_conn.is_open:
             logger.info("シリアルポートをクローズします。")
             self.serial_conn.close()
         logger.info("ギフト処理スレッドを終了しました。")
 
     def _reconnect_serial(self) -> bool:
-        """シリアル接続の再接続を試みます。"""
         logger.info("シリアル再接続処理を開始します。")
         if self.serial_conn and self.serial_conn.is_open:
             try:
@@ -177,12 +161,10 @@ class SerialGiftProcessor:
                     f"既存のシリアル接続クローズ中にエラー: {e}", exc_info=True
                 )
 
-        # 数秒待機
         time.sleep(3)
         return self._initialize_serial()
 
     def start_processing(self):
-        """ギフト処理スレッドを開始します。"""
         if self._processing_thread and self._processing_thread.is_alive():
             logger.warning("ギフト処理スレッドは既に実行中です。")
             return
@@ -195,11 +177,10 @@ class SerialGiftProcessor:
         logger.info("ギフト処理スレッドの開始を要求しました。")
 
     def stop_processing(self):
-        """ギフト処理スレッドを停止します。"""
         logger.info("ギフト処理スレッドの停止を要求します...")
         self._stop_event.set()
         if self._processing_thread and self._processing_thread.is_alive():
-            self._processing_thread.join(timeout=5)  # タイムアウト付きで待機
+            self._processing_thread.join(timeout=5)
             if self._processing_thread.is_alive():
                 logger.warning("ギフト処理スレッドの終了待機がタイムアウトしました。")
             else:

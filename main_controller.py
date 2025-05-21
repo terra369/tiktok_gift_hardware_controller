@@ -18,7 +18,6 @@ logger = logging.getLogger()
 shutdown_event = asyncio.Event()
 _connected_event = asyncio.Event()
 
-# Global reference to serial_processor for signal_handler
 _serial_processor_ref = None
 
 
@@ -139,14 +138,11 @@ async def main():
                 serial_processor = SerialGiftProcessor(
                     port=serial_port,
                     baud_rate=baud_rate,
-                    gift_command_to_send=gift_command,  # Use value from config
-                    ready_signal_expected=ready_signal,  # Use value from config
-                    # Other new parameters like serial_read_timeout can use defaults or be added to config
+                    gift_command_to_send=gift_command,
+                    ready_signal_expected=ready_signal,
                 )
-                serial_processor.start()  # Start the processing thread
-                _serial_processor_ref = (
-                    serial_processor  # Assign to global ref for signal_handler
-                )
+                serial_processor.start()
+                _serial_processor_ref = serial_processor
                 logger.info(
                     f"シリアルプロセッサを開始しました。ポート: {serial_port}, コマンド: '{gift_command}', ready信号: '{ready_signal}'"
                 )
@@ -155,7 +151,7 @@ async def main():
                     f"シリアルプロセッサの初期化または開始に失敗: {serial_port}, {e}",
                     exc_info=True,
                 )
-                serial_processor = None  # Ensure it's None if init fails
+                serial_processor = None
                 _serial_processor_ref = None
         else:
             logger.warning(
@@ -184,9 +180,7 @@ async def main():
                 f"ギフト受信: {sender_name} さんから「{gift_name}」x{event.repeat_count}"
             )
 
-            if (
-                _serial_processor_ref and gift_name == "Swan"
-            ):  # Use the global/correctly scoped ref
+            if _serial_processor_ref and gift_name == "Swan":
                 try:
                     logger.info(
                         f"「Swan」ギフトを検出。{event.repeat_count}個をキューに追加します。"
@@ -346,7 +340,7 @@ async def main():
 
         if tiktok_client and tiktok_client.connected:
             logger.info("シャットダウン時にTikTokクライアントを切断します...")
-            await tiktok_client.stop()  # Ensure this is the correct stop method
+            await tiktok_client.stop()
             logger.info("TikTokクライアントを正常に切断しました。")
 
         if _serial_processor_ref:
