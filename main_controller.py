@@ -18,6 +18,9 @@ logger = logging.getLogger()
 shutdown_event = asyncio.Event()
 _connected_event = asyncio.Event()
 
+# Global reference to serial_processor for signal_handler
+_serial_processor_ref = None
+
 
 def setup_logging(log_level_str: str, log_file_path_str: str):
     numeric_level = getattr(logging, log_level_str.upper(), None)
@@ -91,7 +94,7 @@ def load_config(config_path: str) -> configparser.ConfigParser:
 
 async def main():
     config = None
-    serial_processor = None
+    global _serial_processor_ref
     tiktok_client = None
     connection_task = None
 
@@ -130,15 +133,30 @@ async def main():
 
         if serial_port:
             try:
-                serial_processor = SerialGiftProcessor(serial_port, baud_rate)
+                ready_signal = config.get("Serial", "READY_SIGNAL")
+                gift_command = config.get("Serial", "GIFT_COMMAND")
+
+                serial_processor = SerialGiftProcessor(
+                    port=serial_port,
+                    baud_rate=baud_rate,
+                    gift_command_to_send=gift_command,  # Use value from config
+                    ready_signal_expected=ready_signal,  # Use value from config
+                    # Other new parameters like serial_read_timeout can use defaults or be added to config
+                )
+                serial_processor.start()  # Start the processing thread
+                _serial_processor_ref = (
+                    serial_processor  # Assign to global ref for signal_handler
+                )
                 logger.info(
-                    f"シリアルポート {serial_port} (ボーレート: {baud_rate}) に接続しました。"
+                    f"シリアルプロセッサを開始しました。ポート: {serial_port}, コマンド: '{gift_command}', ready信号: '{ready_signal}'"
                 )
             except Exception as e:
                 logger.error(
-                    f"シリアルポート {serial_port} への接続に失敗しました: {e}"
+                    f"シリアルプロセッサの初期化または開始に失敗: {serial_port}, {e}",
+                    exc_info=True,
                 )
-                serial_processor = None
+                serial_processor = None  # Ensure it's None if init fails
+                _serial_processor_ref = None
         else:
             logger.warning(
                 "シリアルポートが設定されていません。シリアル通信は無効です。"
@@ -166,20 +184,17 @@ async def main():
                 f"ギフト受信: {sender_name} さんから「{gift_name}」x{event.repeat_count}"
             )
 
-            if serial_processor and gift_name == "Swan":
+            if (
+                _serial_processor_ref and gift_name == "Swan"
+            ):  # Use the global/correctly scoped ref
                 try:
                     logger.info(
-                        f"「Swan」ギフト「{gift_name}」を検出しました。シリアルコマンドを送信します。個数: {event.repeat_count}"
+                        f"「Swan」ギフトを検出。{event.repeat_count}個をキューに追加します。"
                     )
-                    loop = asyncio.get_event_loop()
-                    await loop.run_in_executor(
-                        None,
-                        serial_processor.send_gift_command,
-                        gift_name,
-                        event.repeat_count,
-                    )
+                    # No need for run_in_executor, add_gift_to_queue is synchronous and non-blocking
+                    _serial_processor_ref.add_gift_to_queue(event.repeat_count)
                     logger.info(
-                        f"シリアルコマンド送信完了: {gift_name} x {event.repeat_count}"
+                        f"{event.repeat_count}個の「Swan」ギフトを処理キューに追加しました。"
                     )
                 except Exception as e:
                     logger.error(
@@ -331,8 +346,13 @@ async def main():
 
         if tiktok_client and tiktok_client.connected:
             logger.info("シャットダウン時にTikTokクライアントを切断します...")
-            await tiktok_client.disconnect()
+            await tiktok_client.stop()  # Ensure this is the correct stop method
             logger.info("TikTokクライアントを正常に切断しました。")
+
+        if _serial_processor_ref:
+            logger.info("シリアルプロセッサを停止しています...")
+            _serial_processor_ref.stop()
+            logger.info("シリアルプロセッサを停止しました。")
 
         remaining_tasks = [
             t for t in asyncio.all_tasks() if t is not asyncio.current_task()
@@ -350,9 +370,12 @@ async def main():
 
 
 def signal_handler(sig, frame):
-    logger.info(
-        f"シグナル {sig} を受信しました。グレースフルシャットダウンを開始します..."
-    )
+    logger.info(f"{signal.Signals(sig).name} を受信。シャットダウンを開始します...")
+    global _serial_processor_ref
+    if _serial_processor_ref:
+        logger.info("シグナルハンドラ: シリアルプロセッサを停止しています...")
+        _serial_processor_ref.stop()
+        logger.info("シグナルハンドラ: シリアルプロセッサを停止しました。")
     shutdown_event.set()
 
 
