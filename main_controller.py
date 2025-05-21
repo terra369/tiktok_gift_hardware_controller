@@ -123,16 +123,39 @@ async def main():
             f"ギフトキューを初期化しました (最大サイズ: {max_queue_size if max_queue_size > 0 else '無限'})。"
         )
 
-        # SerialGiftProcessorの初期化と開始
-        serial_processor = SerialGiftProcessor(
-            port=config.get("Serial", "PORT"),
-            baud_rate=config.getint("Serial", "BAUD_RATE"),
-            ready_signal=config.get("Serial", "READY_SIGNAL"),
-            gift_command=config.get("Serial", "GIFT_COMMAND"),
-            gift_queue=gift_queue,
-            process_cooldown=config.getfloat("Application", "GIFT_PROCESS_COOLDOWN"),
-        )
-        serial_processor.start_processing()
+        # デバイスモードを確認
+        device_mode = config.get("Serial", "DEVICE_MODE", fallback="WAIT_FOR_DEVICE")
+        port = config.get("Serial", "PORT")
+        
+        # シリアルハードウェアの初期化と開始
+        if port.upper() == "NONE" or device_mode.upper() == "IGNORE_HARDWARE":
+            logger.info("ハードウェア接続なしモードで動作します。TikTokのギフトは検出されますが、ハードウェアは制御されません。")
+            # シミュレーションモードの場合、キューを監視するだけのシンプルなロギング処理を追加
+            async def log_gift_queue():
+                while not shutdown_event.is_set():
+                    try:
+                        gift = await gift_queue.get()
+                        logger.info(f"[シミュレーションモード] ギフトを受信: {gift}")
+                        gift_queue.task_done()
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        logger.error(f"ギフトキュー処理中にエラーが発生しました: {e}", exc_info=True)
+            
+            # シミュレーションタスクを開始
+            asyncio.create_task(log_gift_queue())
+            serial_processor = None
+        else:
+            # 通常モード：シリアルハードウェアに接続
+            serial_processor = SerialGiftProcessor(
+                port=port,
+                baud_rate=config.getint("Serial", "BAUD_RATE"),
+                ready_signal=config.get("Serial", "READY_SIGNAL"),
+                gift_command=config.get("Serial", "GIFT_COMMAND"),
+                gift_queue=gift_queue,
+                process_cooldown=config.getfloat("Application", "GIFT_PROCESS_COOLDOWN"),
+            )
+            serial_processor.start_processing()
 
         # TikTokGiftDetectorの初期化と非同期タスクとしての開始
         # TikTokLiveClientに追加オプションが必要な場合は、settings.iniにセクションを追加し、ここで読み込む

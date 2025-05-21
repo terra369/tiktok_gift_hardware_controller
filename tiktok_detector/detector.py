@@ -1,11 +1,13 @@
 import asyncio
 import logging
 from TikTokLive import TikTokLiveClient
-from TikTokLive.types.events import ConnectEvent, DisconnectEvent, GiftEvent
+from TikTokLive.events import ConnectEvent, DisconnectEvent, GiftEvent
+
 # 【要確認】TikTokLiveの具体的な例外クラスをインポートする必要があるかもしれません
 # from TikTokLive.types.errors import SomeSpecificConnectionError
 
 logger = logging.getLogger(__name__)
+
 
 class TikTokGiftDetector:
     def __init__(
@@ -44,8 +46,7 @@ class TikTokGiftDetector:
         # 例: client_options = {"signer_url": "http://localhost:8080/sign"} など
         client_init_params = {
             "unique_id": self.username,
-            "enable_extended_gift_info": True,
-            **(client_options if client_options else {})
+            **(client_options if client_options else {}),
         }
         logger.info(f"TikTokLiveClientを初期化します: {client_init_params}")
         try:
@@ -64,10 +65,14 @@ class TikTokGiftDetector:
         logger.info(f"TikTok Liveに接続しました: {self.username}")
 
     async def on_disconnect(self, event: DisconnectEvent):
-        logger.warning(f"TikTok Liveから切断されました: {self.username}. runメソッド内で再接続が試みられます。")
+        logger.warning(
+            f"TikTok Liveから切断されました: {self.username}. runメソッド内で再接続が試みられます。"
+        )
 
     async def on_gift(self, event: GiftEvent):
-        logger.debug(f"ギフト受信: {event.gift.name} (ID: {event.gift.id}) from {event.user.nickname}")
+        logger.debug(
+            f"ギフト受信: {event.gift.name} (ID: {event.gift.id}) from {event.user.nickname}"
+        )
 
         is_target_gift = False
         if self.target_gift_id:
@@ -81,47 +86,105 @@ class TikTokGiftDetector:
                 "name": event.gift.name,
                 "id": event.gift.id,
                 "user": event.user.nickname,
-                "timestamp": asyncio.get_event_loop().time() # UNIXタイムスタンプ
+                "timestamp": asyncio.get_event_loop().time(),  # UNIXタイムスタンプ
             }
             try:
                 self.gift_queue.put_nowait(gift_info)
-                logger.info(f"ターゲットギフト検知: {gift_info['name']} (ID: {gift_info['id']}) をキューに追加しました。送信者: {gift_info['user']}")
+                logger.info(
+                    f"ターゲットギフト検知: {gift_info['name']} (ID: {gift_info['id']}) をキューに追加しました。送信者: {gift_info['user']}"
+                )
             except asyncio.QueueFull:
-                logger.warning(f"ギフトキューが満杯です。ギフト {gift_info['name']} は破棄されました。")
+                logger.warning(
+                    f"ギフトキューが満杯です。ギフト {gift_info['name']} は破棄されました。"
+                )
             except Exception as e:
-                logger.error(f"ギフトキューへの追加中にエラーが発生しました: {e}", exc_info=True)
+                logger.error(
+                    f"ギフトキューへの追加中にエラーが発生しました: {e}", exc_info=True
+                )
+
+    def _initialize_tiktok_client(self):
+        """TikTokLiveClientを初期化して、リスナーを登録する"""
+        # クライアント初期化パラメータを更新
+        client_init_params = {
+            "unique_id": self.username,
+        }
+
+        # クライアントオプションを追加する（存在する場合）
+        if hasattr(self, "client_options") and self.client_options:
+            # このバージョンのTikTokLiveは署名サーバーなどの追加パラメータをサポートしていません
+            # 安定性を向上させるため、基本的なパラメータのみを使用します
+            logger.info(f"TikTokLiveClientのオプション（使用されません）: {self.client_options}")
+            
+            # 追加パラメータではなく、基本的な接続の安定性を高める設定
+            # 例：自動再接続を有効にするフラグなど
+            # 注：このバージョンのライブラリではサポートされていない可能性があります
+
+        logger.info(f"TikTokLiveClientを(再)初期化します: {client_init_params}")
+
+        # クライアントを初期化
+        self.client = TikTokLiveClient(**client_init_params)
+
+        # イベントリスナーを登録
+        self.client.add_listener("connect", self.on_connect)
+        self.client.add_listener("disconnect", self.on_disconnect)
+        self.client.add_listener("gift", self.on_gift)
+
+        logger.info("TikTokLiveClientの(再)初期化とリスナー登録が完了しました。")
 
     async def run(self):
         """TikTokライブの監視を開始・再開する無限ループ。"""
         while True:
             if self.stop_event and self.stop_event.is_set():
-                logger.info("シャットダウン要求を受け取りました。TikTokギフト監視を終了します。")
+                logger.info(
+                    "シャットダウン要求を受け取りました。TikTokギフト監視を終了します。"
+                )
                 break
+
             try:
+                # 各接続試行の前にクライアントを再初期化
+                self._initialize_tiktok_client()
+
                 logger.info(f"{self.username} のTikTok Live監視を開始します...")
-                # 既に接続されている場合の適切な処理 (TikTokLiveClientの仕様に依存)
-                # TikTokLiveClientが内部で状態管理していることを期待。必要に応じてdisconnect()を呼ぶ。
-                # if self.client.connected: # client.connected のようなプロパティがあるか確認
-                #     logger.info("既に接続されているため、一度切断します。")
-                #     await self.client.disconnect() # disconnectが非同期か同期か確認
+                logger.info(
+                    f"Client state before start(): self.client.connected = {self.client.connected}"
+                )
 
                 await self.client.start()
-                # start()が正常に終了した場合 (通常はCtrl+Cなどで停止されるまでブロックするはず)
-                # もしstart()が予期せず終了した場合、再接続ロジックが働く
-                logger.warning(f"{self.username} のTikTok Live監視が停止しました。再接続を試みます...")
+
+                # start()が正常に終了した場合（通常発生しないはず）
+                logger.warning(
+                    f"{self.username} のTikTok Live監視 (self.client.start()) が例外を発生させずに終了しました。"
+                )
+                logger.warning(
+                    f"Client state after start() exited: self.client.connected = {self.client.connected}"
+                )
+                logger.warning(
+                    f"{self.username} のTikTok Live監視が停止しました。再接続ロジックが続行されます..."
+                )
 
             except asyncio.CancelledError:
                 logger.info("TikTokギフト検知タスクがキャンセルされました。")
                 raise
             except ConnectionRefusedError as e:
-                logger.error(f"TikTok Liveへの接続が拒否されました: {e}. {self.reconnect_delay}秒後に再試行します。", exc_info=True)
-            except TimeoutError as e: # asyncio.TimeoutError or other specific TimeoutError
-                logger.error(f"TikTok Liveへの接続がタイムアウトしました: {e}. {self.reconnect_delay}秒後に再試行します。", exc_info=True)
+                logger.error(
+                    f"TikTok Liveへの接続が拒否されました: {e}. {self.reconnect_delay}秒後に再試行します。",
+                    exc_info=True,
+                )
+            except (
+                TimeoutError
+            ) as e:  # asyncio.TimeoutError or other specific TimeoutError
+                logger.error(
+                    f"TikTok Liveへの接続がタイムアウトしました: {e}. {self.reconnect_delay}秒後に再試行します。",
+                    exc_info=True,
+                )
             # except SomeSpecificConnectionError as e: # TikTokLiveライブラリ固有の接続エラー
             #     logger.error(f"TikTok Live接続エラー: {e}. {self.reconnect_delay}秒後に再試行します。", exc_info=True)
             except Exception as e:
                 # TikTokLiveClient.start()が投げる可能性のある他の主要な例外もここで捕捉することを推奨
-                logger.error(f"TikTok Live監視中に予期せぬエラーが発生しました: {e}. {self.reconnect_delay}秒後に再試行します。", exc_info=True)
+                logger.error(
+                    f"TikTok Live監視中に予期せぬエラーが発生しました: {e}. {self.reconnect_delay}秒後に再試行します。",
+                    exc_info=True,
+                )
 
             # どのような状況でstart()が終了したかに関わらず、次の試行まで待機
             # (正常終了時もここに来る可能性があるため、シャットダウン要求時以外は再試行する)
