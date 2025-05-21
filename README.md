@@ -7,7 +7,7 @@
 ## 主な機能
 
 - 指定したTikTokユーザーのライブ配信をリアルタイムで監視
-- 設定ファイルで定義された特定のギフト名を検知 (ギフトIDでの指定も可能)
+- 設定ファイルで定義された特定のギフト名を検知
 - ギフト検知時に、シリアルポート経由で接続されたハードウェア（例: Arduino）にコマンドを送信
 - 詳細なロギング機能 (コンソールおよびファイル出力)
 - 設定ファイル (`config/settings.ini`) による柔軟なカスタマイズ
@@ -20,15 +20,13 @@
 ```
 tiktok_gift_hardware_controller/
 ├── main_controller.py        # メイン処理、エントリーポイント
-├── tiktok_detector/          # TikTokライブ監視モジュール
-│   ├── __init__.py
-│   └── detector.py           # TikTokGiftDetectorクラス
 ├── serial_handler/           # シリアル通信処理モジュール
 │   ├── __init__.py
 │   └── handler.py            # SerialGiftProcessorクラス
 ├── config/                   # 設定ファイルディレクトリ
 │   └── settings.ini          # アプリケーション設定ファイル
 ├── requirements.txt          # 依存ライブラリリスト
+├── requirements.in           # 依存ライブラリリスト
 ├── .gitignore                # Git管理対象外ファイル定義
 └── README.md                 # このファイル
 ```
