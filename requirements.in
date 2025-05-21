@@ -1,2 +1,2 @@
-TikTokLive==6.5.3
+TikTokLive==^6
 pyserial>=3.5,<4.0.0
