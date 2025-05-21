@@ -75,12 +75,10 @@ tiktok_gift_hardware_controller/
 
 ```ini
 [TikTok]
-# 監視対象のTikTokユーザー名 (@から始まる)
-USERNAME = @your_tiktok_username_here
+# 監視対象のTikTokユーザー名
+USERNAME = nakamura.a.k.a.hippy
 # 検知対象のギフト名 (正確な名称。TikTokLiveライブラリでの取得名に合わせる)
-TARGET_GIFT_NAME = バラ
-# (オプション) 検知対象のギフトID (より安定する場合、こちらを優先的に使用する)
-TARGET_GIFT_ID = 
+TARGET_GIFT_NAME = Swan
 
 [Serial]
 # Arduinoが接続されているCOMポート (例: Windowsでは COM3, macOS/Linuxでは /dev/ttyUSB0 や /dev/tty.usbmodemXXXXX)
@@ -108,6 +106,15 @@ LOG_FILE_PATH = ./app.log
 # [TikTokClientOptions]
 # signer_url = http://localhost:8080/sign
 # # その他のTikTokLiveClientが受け付けるオプション...
+```
+
+必要に応じて以下の環境変数を設定することで、Cookie や署名サーバーの情報を
+`TikTokGiftDetector` に渡すことができます。
+
+```bash
+TIKTOK_COOKIES='{"sessionid":"..."}'
+TIKTOK_SIGNER_URL=http://localhost:8080/sign
+TIKTOK_SIGN_API_KEY=<your-sign-api-key>
 ```
 
 **主な設定項目:**

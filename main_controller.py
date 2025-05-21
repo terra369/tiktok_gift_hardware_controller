@@ -6,18 +6,20 @@ import os
 import sys
 from pathlib import Path
 
-from tiktok_detector.detector import TikTokGiftDetector
 from serial_handler.handler import SerialGiftProcessor
+from TikTokLive import TikTokLiveClient
+from TikTokLive.events import ConnectEvent, GiftEvent, DisconnectEvent
+from TikTokLive.client.errors import (
+    UserOfflineError,
+    AlreadyConnectedError,
+)
 
-# ルートロガーの設定
 logger = logging.getLogger()
-
-# グレースフルシャットダウンのためのイベント
 shutdown_event = asyncio.Event()
+_connected_event = asyncio.Event()
 
 
 def setup_logging(log_level_str: str, log_file_path_str: str):
-    """ロギングを設定します。"""
     numeric_level = getattr(logging, log_level_str.upper(), None)
     if not isinstance(numeric_level, int):
         logging.warning(f"無効なログレベル: {log_level_str}。INFOレベルを使用します。")
@@ -27,18 +29,14 @@ def setup_logging(log_level_str: str, log_file_path_str: str):
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
-    # コンソールハンドラ
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    # ファイルハンドラ (パスが指定されている場合)
     if log_file_path_str:
         try:
             log_file_path = Path(log_file_path_str)
-            log_file_path.parent.mkdir(
-                parents=True, exist_ok=True
-            )  # 必要ならディレクトリ作成
+            log_file_path.parent.mkdir(parents=True, exist_ok=True)
             file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
@@ -54,7 +52,6 @@ def setup_logging(log_level_str: str, log_file_path_str: str):
 
 
 def load_config(config_path: str) -> configparser.ConfigParser:
-    """設定ファイルを読み込みます。"""
     config = configparser.ConfigParser()
     if not Path(config_path).exists():
         logger.error(f"設定ファイルが見つかりません: {config_path}")
@@ -62,9 +59,8 @@ def load_config(config_path: str) -> configparser.ConfigParser:
 
     try:
         config.read(config_path, encoding="utf-8")
-        # 必須セクションとキーの存在チェック (例)
         required_sections = {
-            "TikTok": ["USERNAME", "TARGET_GIFT_NAME"],
+            "TikTok": ["USERNAME"],
             "Serial": ["PORT", "BAUD_RATE", "READY_SIGNAL", "GIFT_COMMAND"],
             "Application": [
                 "GIFT_PROCESS_COOLDOWN",
@@ -80,9 +76,6 @@ def load_config(config_path: str) -> configparser.ConfigParser:
                 )
             for key in keys:
                 if not config.has_option(section, key):
-                    # TARGET_GIFT_ID はオプションなのでチェックから除外
-                    if section == "TikTok" and key == "TARGET_GIFT_ID":
-                        continue
                     raise ValueError(
                         f"設定ファイルセクション '{section}' に必須キー '{key}' がありません。"
                     )
@@ -97,73 +90,221 @@ def load_config(config_path: str) -> configparser.ConfigParser:
 
 
 async def main():
-    """アプリケーションのメイン処理。"""
     config = None
     serial_processor = None
-    tiktok_detector_task = None
+    tiktok_client = None
+    connection_task = None
 
     try:
-        # 設定ファイルのパス (スクリプトの場所基準で config/settings.ini)
         base_dir = Path(__file__).resolve().parent
         config_file = base_dir / "config" / "settings.ini"
 
         config = load_config(str(config_file))
 
-        # ロギング設定
         log_level = config.get("Application", "LOG_LEVEL", fallback="INFO")
         log_file_path = config.get("Application", "LOG_FILE_PATH", fallback=None)
         setup_logging(log_level, log_file_path)
 
         logger.info("アプリケーションを開始します...")
 
-        # asyncioキューの初期化
         max_queue_size = config.getint("Application", "MAX_GIFT_QUEUE_SIZE", fallback=0)
         gift_queue = asyncio.Queue(maxsize=max_queue_size)
         logger.info(
             f"ギフトキューを初期化しました (最大サイズ: {max_queue_size if max_queue_size > 0 else '無限'})。"
         )
 
-        # SerialGiftProcessorの初期化と開始
-        serial_processor = SerialGiftProcessor(
-            port=config.get("Serial", "PORT"),
-            baud_rate=config.getint("Serial", "BAUD_RATE"),
-            ready_signal=config.get("Serial", "READY_SIGNAL"),
-            gift_command=config.get("Serial", "GIFT_COMMAND"),
-            gift_queue=gift_queue,
-            process_cooldown=config.getfloat("Application", "GIFT_PROCESS_COOLDOWN"),
+        device_mode = config.get("Serial", "DEVICE_MODE", fallback="WAIT_FOR_DEVICE")
+        port = config.get("Serial", "PORT")
+
+        tiktok_username = config.get("TikTok", "USERNAME")
+        FETCH_GIFT_INFO = True
+        RECONNECT_DELAY = config.getint(
+            "Application", "TIKTOK_RECONNECT_DELAY", fallback=60
         )
-        serial_processor.start_processing()
 
-        # TikTokGiftDetectorの初期化と非同期タスクとしての開始
-        # TikTokLiveClientに追加オプションが必要な場合は、settings.iniにセクションを追加し、ここで読み込む
-        # 例: client_options = {"signer_url": config.get("TikTokSigner", "URL", fallback=None)}
-        # 現状は追加オプションなしで初期化
-        client_options = {}  # 必要に応じて設定ファイルから読み込む
-        if config.has_section("TikTokClientOptions"):
-            client_options = dict(config.items("TikTokClientOptions"))
-            logger.info(f"TikTokLiveClientに追加オプションを渡します: {client_options}")
+        tiktok_client = TikTokLiveClient(unique_id=f"@{tiktok_username}")
 
-        detector = TikTokGiftDetector(
-            username=config.get("TikTok", "USERNAME"),
-            target_gift_name=config.get("TikTok", "TARGET_GIFT_NAME"),
-            target_gift_id=config.get(
-                "TikTok", "TARGET_GIFT_ID", fallback=None
-            ),  # fallbackでNoneを許容
-            gift_queue=gift_queue,
-            reconnect_delay=config.getint("Application", "TIKTOK_RECONNECT_DELAY"),
-            client_options=client_options,
-            stop_event=shutdown_event,
-        )
-        tiktok_detector_task = asyncio.create_task(detector.run())
-        logger.info("TikTokギフト検知タスクを開始しました。")
+        serial_port = config.get("Serial", "PORT", fallback=None)
+        baud_rate = config.getint("Serial", "BAUD_RATE", fallback=9600)
+        serial_processor = None
 
-        # シャットダウンシグナルを待機
-        logger.info("アプリケーション実行中。Ctrl+C で停止します。")
-        await shutdown_event.wait()
+        if serial_port:
+            try:
+                serial_processor = SerialGiftProcessor(serial_port, baud_rate)
+                logger.info(
+                    f"シリアルポート {serial_port} (ボーレート: {baud_rate}) に接続しました。"
+                )
+            except Exception as e:
+                logger.error(
+                    f"シリアルポート {serial_port} への接続に失敗しました: {e}"
+                )
+                serial_processor = None
+        else:
+            logger.warning(
+                "シリアルポートが設定されていません。シリアル通信は無効です。"
+            )
+
+        @tiktok_client.on(ConnectEvent)
+        async def on_connect(_: ConnectEvent):
+            logger.info(
+                f"{tiktok_username} に接続しました！ Room ID: {tiktok_client.room_id}"
+            )
+            _connected_event.set()
+
+        @tiktok_client.on(GiftEvent)
+        async def on_gift(event: GiftEvent):
+            gift_name = (
+                event.gift.name if event.gift and event.gift.name else "不明なギフト"
+            )
+            sender_name = (
+                event.user.nickname
+                if event.user and event.user.nickname
+                else event.user.unique_id if event.user else "不明な送信者"
+            )
+
+            logger.info(
+                f"ギフト受信: {sender_name} さんから「{gift_name}」x{event.repeat_count}"
+            )
+
+            if serial_processor and gift_name == "Swan":
+                try:
+                    logger.info(
+                        f"「Swan」ギフト「{gift_name}」を検出しました。シリアルコマンドを送信します。個数: {event.repeat_count}"
+                    )
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(
+                        None,
+                        serial_processor.send_gift_command,
+                        gift_name,
+                        event.repeat_count,
+                    )
+                    logger.info(
+                        f"シリアルコマンド送信完了: {gift_name} x {event.repeat_count}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"「{gift_name}」のシリアルコマンド送信中にエラー: {e}",
+                        exc_info=True,
+                    )
+
+        @tiktok_client.on(DisconnectEvent)
+        async def on_disconnect(_: DisconnectEvent):
+            logger.info(f"{tiktok_username} との接続が切断されました。")
+            _connected_event.clear()
+
+        while not shutdown_event.is_set():
+            try:
+                _connected_event.clear()
+                logger.info(
+                    f"{tiktok_username} のTikTok Live監視を開始します (fetch_gift_info={FETCH_GIFT_INFO})..."
+                )
+
+                is_live = await tiktok_client.web.fetch_is_live(
+                    unique_id=tiktok_username
+                )
+                if not is_live:
+                    logger.warning(
+                        f"{tiktok_username} は現在オフラインです。{RECONNECT_DELAY}秒後に再試行します。"
+                    )
+                    await asyncio.sleep(RECONNECT_DELAY)
+                    continue
+
+                connection_task = await tiktok_client.start(
+                    fetch_gift_info=FETCH_GIFT_INFO
+                )
+
+                try:
+                    await asyncio.wait_for(_connected_event.wait(), timeout=15.0)
+                    logger.info(
+                        f"{tiktok_username} への接続が確認されました。ルームID: {tiktok_client.room_id}"
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(
+                        f"{tiktok_username} への接続が15秒以内に確認できませんでした。切断して再試行します。"
+                    )
+                    if tiktok_client.connected:
+                        await tiktok_client.disconnect()
+                    if connection_task and not connection_task.done():
+                        connection_task.cancel()
+                        try:
+                            await connection_task
+                        except asyncio.CancelledError:
+                            logger.info(
+                                "接続試行タスクはタイムアウトによりキャンセルされました。"
+                            )
+                    await asyncio.sleep(RECONNECT_DELAY)
+                    continue
+
+                await connection_task
+                logger.warning(
+                    f"{tiktok_username} のTikTok Live監視が例外なしで終了しました。{RECONNECT_DELAY}秒後に再接続します。"
+                )
+
+            except UserOfflineError:
+                logger.info(
+                    f"{tiktok_username} はオフラインか、配信を終了しました。{RECONNECT_DELAY}秒後に再試行します。"
+                )
+            except AlreadyConnectedError:
+                logger.warning(
+                    f"{tiktok_username} には既に接続済みです。現在の接続を使用します。"
+                )
+                if tiktok_client.connected:
+                    await tiktok_client.disconnect()
+                if connection_task and not connection_task.done():
+                    connection_task.cancel()
+                _connected_event.clear()
+            except ConnectionRefusedError:
+                logger.error(
+                    f"{tiktok_username} への接続が拒否されました。{RECONNECT_DELAY}秒後に再試行します。"
+                )
+            except asyncio.CancelledError:
+                logger.info(
+                    "メインの監視ループがキャンセルされました。シャットダウンします。"
+                )
+                break
+            except Exception as e:
+                logger.error(
+                    f"TikTok Live監視中に予期せぬエラーが発生しました: {e}",
+                    exc_info=True,
+                )
+            finally:
+                if tiktok_client and tiktok_client.connected:
+                    logger.info(f"{tiktok_username} との接続を切断しています...")
+                    await tiktok_client.disconnect()
+                    logger.info(f"{tiktok_username} との接続を正常に切断しました。")
+                if connection_task and not connection_task.done():
+                    connection_task.cancel()
+                    try:
+                        await connection_task
+                    except asyncio.CancelledError:
+                        logger.info(
+                            "監視タスクのクリーンアップ中にキャンセルを処理しました。"
+                        )
+                    except Exception as e_task_cleanup:
+                        logger.error(
+                            f"監視タスクのクリーンアップ中にエラー: {e_task_cleanup}"
+                        )
+                connection_task = None
+                _connected_event.clear()
+
+                if not shutdown_event.is_set():
+                    logger.info(f"{RECONNECT_DELAY}秒後に再接続を試みます...")
+                    try:
+                        await asyncio.wait_for(
+                            shutdown_event.wait(), timeout=RECONNECT_DELAY
+                        )
+                        if shutdown_event.is_set():
+                            logger.info(
+                                "シャットダウンが要求されたため、再接続を中止します。"
+                            )
+                            break
+                    except asyncio.TimeoutError:
+                        pass
+
+        logger.info("TikTok監視ループを終了しました。")
 
     except FileNotFoundError as e:
         logger.critical(f"起動エラー: {e}")
-        # setup_loggingが呼ばれる前にエラーが発生する可能性を考慮し、基本的なloggingを使う
         logging.basicConfig(level=logging.ERROR)
         logging.critical(f"起動エラー: {e}")
     except (configparser.Error, ValueError) as e:
@@ -176,25 +317,34 @@ async def main():
         )
     finally:
         logger.info("アプリケーションのシャットダウン処理を開始します...")
-        if tiktok_detector_task and not tiktok_detector_task.done():
-            logger.info("TikTokギフト検知タスクをキャンセルします...")
-            tiktok_detector_task.cancel()
+        if connection_task and not connection_task.done():
+            logger.info("メインのTikTok接続タスクをキャンセルします...")
+            connection_task.cancel()
             try:
-                await tiktok_detector_task
-                logger.info("TikTokギフト検知タスクは正常にキャンセルされました。")
+                await connection_task
             except asyncio.CancelledError:
-                logger.info(
-                    "TikTokギフト検知タスクがキャンセルされました (asyncio.CancelledError)。"
-                )
+                logger.info("メインのTikTok接続タスクは正常にキャンセルされました。")
             except Exception as e:
                 logger.error(
-                    f"TikTokギフト検知タスクのキャンセル中にエラー: {e}", exc_info=True
+                    f"メインのTikTok接続タスク停止中にエラー: {e}", exc_info=True
                 )
 
-        if serial_processor:
-            logger.info("シリアルギフトプロセッサを停止します...")
-            serial_processor.stop_processing()
-            logger.info("シリアルギフトプロセッサの停止処理が完了しました。")
+        if tiktok_client and tiktok_client.connected:
+            logger.info("シャットダウン時にTikTokクライアントを切断します...")
+            await tiktok_client.disconnect()
+            logger.info("TikTokクライアントを正常に切断しました。")
+
+        remaining_tasks = [
+            t for t in asyncio.all_tasks() if t is not asyncio.current_task()
+        ]
+        if remaining_tasks:
+            logger.info(
+                f"残りのバックグラウンドタスク ({len(remaining_tasks)}) をキャンセルして待機します..."
+            )
+            for task in remaining_tasks:
+                task.cancel()
+            await asyncio.gather(*remaining_tasks, return_exceptions=True)
+            logger.info("残りのタスクの処理が完了しました。")
 
         logger.info("アプリケーションは正常にシャットダウンしました。")
 
@@ -207,13 +357,11 @@ def signal_handler(sig, frame):
 
 
 if __name__ == "__main__":
-    # 基本的なロガーを早期に設定 (設定ファイル読み込み前用)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    # シグナルハンドラの設定
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
