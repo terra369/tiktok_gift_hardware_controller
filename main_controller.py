@@ -180,20 +180,27 @@ async def main():
                 f"ギフト受信: {sender_name} さんから「{gift_name}」x{event.repeat_count}"
             )
 
-            if _serial_processor_ref and gift_name == "Swan":
-                try:
+            if gift_name == "Swan":
+                logger.info(
+                    f"「Swan」ギフトを検出しました。送信者: {sender_name}, 個数: {event.repeat_count}"
+                )
+                if _serial_processor_ref:
+                    try:
+                        logger.info(
+                            f"シリアル処理のため、{event.repeat_count}個の「Swan」をキューに追加します。"
+                        )
+                        _serial_processor_ref.add_gift_to_queue(event.repeat_count)
+                        logger.info(
+                            f"{event.repeat_count}個の「Swan」ギフトを処理キューに追加完了。"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"「Swan」ギフトの処理キュー追加中にエラー: {e}",
+                            exc_info=True,
+                        )
+                else:
                     logger.info(
-                        f"「Swan」ギフトを検出。{event.repeat_count}個をキューに追加します。"
-                    )
-                    # No need for run_in_executor, add_gift_to_queue is synchronous and non-blocking
-                    _serial_processor_ref.add_gift_to_queue(event.repeat_count)
-                    logger.info(
-                        f"{event.repeat_count}個の「Swan」ギフトを処理キューに追加しました。"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"「{gift_name}」のシリアルコマンド送信中にエラー: {e}",
-                        exc_info=True,
+                        "シリアルプロセッサが無効なため、「Swan」ギフトのキュー追加はスキップされました。"
                     )
 
         @tiktok_client.on(DisconnectEvent)
@@ -374,10 +381,6 @@ def signal_handler(sig, frame):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
