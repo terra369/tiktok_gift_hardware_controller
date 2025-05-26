@@ -98,7 +98,7 @@ MAX_GIFT_QUEUE_SIZE = 0
 # ログレベル (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 LOG_LEVEL = INFO
 # ログファイルパス (空の場合はコンソール出力のみ)
-LOG_FILE_PATH = ./app.log
+LOG_FILE_PATH = ./logs/app.log
 
 # (オプション) TikTokLiveClientに追加で渡すパラメータがある場合
 # [TikTokClientOptions]
