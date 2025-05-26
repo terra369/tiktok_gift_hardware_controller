@@ -192,11 +192,13 @@ async def main():
                 if _serial_processor_ref:
                     try:
                         logger.info(
-                            f"シリアル処理のため、{event.repeat_count}個の「Heart Me」をキューに追加します。"
+                            f"シリアル処理のため、「Heart Me」ギフトを {event.repeat_count} 個、個別にキューに追加します。"
                         )
-                        _serial_processor_ref.add_gift_to_queue(event.repeat_count)
+                        for i in range(event.repeat_count):
+                            await _serial_processor_ref.add_gift_item(gift_name)
+                            logger.debug(f"「Heart Me」ギフト ({i+1}/{event.repeat_count}) をキューに追加しました。")
                         logger.info(
-                            f"{event.repeat_count}個の「Heart Me」ギフトを処理キューに追加完了。"
+                            f"{event.repeat_count}個の「Heart Me」ギフトのキュー追加が完了しました。"
                         )
                     except Exception as e:
                         logger.error(
