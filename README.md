@@ -92,7 +92,7 @@ GIFT_COMMAND = gift
 # 1つのギフトを処理した後、次のギフトを処理するまでの最小クールダウン時間（秒）
 GIFT_PROCESS_COOLDOWN = 22
 # TikTok接続試行時のリトライ間隔（秒）
-TIKTOK_RECONNECT_DELAY = 60
+TIKTOK_RECONNECT_DELAY = 5
 # ギフトキューの最大サイズ (0は無限)
 MAX_GIFT_QUEUE_SIZE = 0
 # ログレベル (DEBUG, INFO, WARNING, ERROR, CRITICAL)
