@@ -196,17 +196,25 @@ async def main():
 
                 # Process only if it's the end of a repeat sequence (or a single gift marked as such)
                 if getattr(event, "repeat_end", False):
+                    count_to_add = getattr(
+                        event, "repeat_count", 1
+                    )  # Get the total count from the combo
                     logger.info(
-                        f"イベントが repeat_end=True のため、「You're awesome」ギフト (コンボ数: {event.repeat_count}) を処理します。"
+                        f"イベントが repeat_end=True のため、「You're awesome」ギフト (最終コンボ数: {event.repeat_count}、合計 {count_to_add} 個) を処理します。"
                     )
                     if _serial_processor_ref:
                         try:
                             logger.info(
-                                f"シリアル処理のため、「You're awesome」ギフト (コンボ数: {event.repeat_count}) を1個キューに追加します。"
+                                f"シリアル処理のため、「You're awesome」ギフトを合計 {count_to_add} 個キューに追加します。"
                             )
-                            await _serial_processor_ref.add_gift_item(gift_name)
+                            for i in range(count_to_add):
+                                await _serial_processor_ref.add_gift_item(gift_name)
+                                # 個別の追加ログはデバッグレベルにすることも検討（大量の場合ログが冗長になるため）
+                                logger.debug(
+                                    f"「You're awesome」ギフト ({i+1}/{count_to_add}) をキューに追加しました。"
+                                )
                             logger.info(
-                                f"「You're awesome」ギフト (コンボ数: {event.repeat_count}) のキュー追加が完了しました。"
+                                f"「You're awesome」ギフト、合計 {count_to_add} 個のキュー追加が完了しました。"
                             )
                         except Exception as e:
                             logger.error(
