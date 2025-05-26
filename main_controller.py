@@ -134,14 +134,19 @@ async def main():
             try:
                 ready_signal = config.get("Serial", "READY_SIGNAL")
                 gift_command = config.get("Serial", "GIFT_COMMAND")
+                process_cooldown = config.getfloat(
+                    "Application", "GIFT_PROCESS_COOLDOWN", fallback=22.0
+                )
 
                 serial_processor = SerialGiftProcessor(
                     port=serial_port,
                     baud_rate=baud_rate,
-                    gift_command_to_send=gift_command,
-                    ready_signal_expected=ready_signal,
+                    ready_signal=ready_signal,
+                    gift_command=gift_command,
+                    gift_queue=gift_queue,
+                    process_cooldown=process_cooldown,
                 )
-                serial_processor.start()
+                serial_processor.start_processing()
                 _serial_processor_ref = serial_processor
                 logger.info(
                     f"シリアルプロセッサを開始しました。ポート: {serial_port}, コマンド: '{gift_command}', ready信号: '{ready_signal}'"
