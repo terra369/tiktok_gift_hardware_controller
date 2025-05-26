@@ -130,18 +130,23 @@ async def main():
         baud_rate = config.getint("Serial", "BAUD_RATE", fallback=9600)
         serial_processor = None
 
-        if serial_port:
+        if serial_port and serial_port.upper() != "NONE":
             try:
                 ready_signal = config.get("Serial", "READY_SIGNAL")
                 gift_command = config.get("Serial", "GIFT_COMMAND")
+                process_cooldown = config.getfloat(
+                    "Application", "GIFT_PROCESS_COOLDOWN", fallback=22.0
+                )
 
                 serial_processor = SerialGiftProcessor(
                     port=serial_port,
                     baud_rate=baud_rate,
-                    gift_command_to_send=gift_command,
-                    ready_signal_expected=ready_signal,
+                    ready_signal=ready_signal,
+                    gift_command=gift_command,
+                    gift_queue=gift_queue,
+                    process_cooldown=process_cooldown,
                 )
-                serial_processor.start()
+                serial_processor.start_processing()
                 _serial_processor_ref = serial_processor
                 logger.info(
                     f"シリアルプロセッサを開始しました。ポート: {serial_port}, コマンド: '{gift_command}', ready信号: '{ready_signal}'"
@@ -176,6 +181,16 @@ async def main():
                 else event.user.unique_id if event.user else "不明な送信者"
             )
 
+            # 詳細なギフト情報をログに出力（デバッグ用）
+            logger.debug(
+                f"Raw GiftEvent: gift_id={event.gift.id}, name={gift_name}, count={event.repeat_count}, "
+                f"timestamp={event.timestamp}, user_id={event.user.id}, user_name={sender_name}, "
+                f"streakable={getattr(event.gift, 'streakable', 'N/A')}, "  # event.gift.streakable を確認
+                f"repeat_end={event.repeat_end}, "
+                f"extended_gift_info: streakable={getattr(event.gift.extended_gift, 'streakable', 'N/A')}, "
+                f"combo_count={getattr(event.gift.extended_gift, 'combo_count', 'N/A')}"
+            )
+
             logger.info(
                 f"ギフト受信: {sender_name} さんから「{gift_name}」x{event.repeat_count}"
             )
@@ -184,14 +199,29 @@ async def main():
                 logger.info(
                     f"「Swan」ギフトを検出しました。送信者: {sender_name}, 個数: {event.repeat_count}"
                 )
-                if _serial_processor_ref:
+                if (
+                    _serial_processor_ref
+                    and _serial_processor_ref._processing_thread
+                    and _serial_processor_ref._processing_thread.is_alive()
+                ):
                     try:
                         logger.info(
                             f"シリアル処理のため、{event.repeat_count}個の「Swan」をキューに追加します。"
                         )
-                        _serial_processor_ref.add_gift_to_queue(event.repeat_count)
+                        for _ in range(event.repeat_count):
+                            await gift_queue.put(
+                                {
+                                    "name": gift_name,
+                                    "sender": sender_name,
+                                    "count": 1,  # 個別のギフトとしてキューに入れる
+                                }
+                            )
                         logger.info(
                             f"{event.repeat_count}個の「Swan」ギフトを処理キューに追加完了。"
+                        )
+                    except asyncio.QueueFull:
+                        logger.warning(
+                            f"ギフトキューがいっぱいです。「Swan」ギフトを追加できませんでした。"
                         )
                     except Exception as e:
                         logger.error(
