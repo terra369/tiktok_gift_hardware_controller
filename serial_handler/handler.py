@@ -41,6 +41,14 @@ class SerialGiftProcessor:
         self._processing_thread = None
         self._last_processed_time = 0
 
+    async def add_gift_item(self, gift_name: str):
+        """Asynchronously adds a gift item (as a dictionary) to the processing queue."""
+        gift_item = {"name": gift_name}
+        await self.gift_queue.put(gift_item)
+        logger.debug(
+            f"キューにギフトアイテム {gift_item} を追加しました。現在のキューサイズ: {self.gift_queue.qsize()}"
+        )
+
     def _initialize_serial(self) -> bool:
         try:
             logger.info(
