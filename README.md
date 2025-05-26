@@ -76,7 +76,7 @@ tiktok_gift_hardware_controller/
 # 監視対象のTikTokユーザー名
 USERNAME = nakamura.a.k.a.hippy
 # 検知対象のギフト名 (正確な名称。TikTokLiveライブラリでの取得名に合わせる)
-TARGET_GIFT_NAME = Swan
+TARGET_GIFT_NAME = You're awesome
 
 [Serial]
 # Arduinoが接続されているCOMポート (例: Windowsでは COM3, macOS/Linuxでは /dev/ttyUSB0 や /dev/tty.usbmodemXXXXX)
