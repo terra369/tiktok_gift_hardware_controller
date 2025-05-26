@@ -185,27 +185,27 @@ async def main():
                 f"ギフト受信: {sender_name} さんから「{gift_name}」x{event.repeat_count}"
             )
 
-            if gift_name == "Swan":
+            if gift_name == "Heart Me":
                 logger.info(
-                    f"「Swan」ギフトを検出しました。送信者: {sender_name}, 個数: {event.repeat_count}"
+                    f"「Heart Me」ギフトを検出しました。送信者: {sender_name}, 個数: {event.repeat_count}"
                 )
                 if _serial_processor_ref:
                     try:
                         logger.info(
-                            f"シリアル処理のため、{event.repeat_count}個の「Swan」をキューに追加します。"
+                            f"シリアル処理のため、{event.repeat_count}個の「Heart Me」をキューに追加します。"
                         )
                         _serial_processor_ref.add_gift_to_queue(event.repeat_count)
                         logger.info(
-                            f"{event.repeat_count}個の「Swan」ギフトを処理キューに追加完了。"
+                            f"{event.repeat_count}個の「Heart Me」ギフトを処理キューに追加完了。"
                         )
                     except Exception as e:
                         logger.error(
-                            f"「Swan」ギフトの処理キュー追加中にエラー: {e}",
+                            f"「Heart Me」ギフトの処理キュー追加中にエラー: {e}",
                             exc_info=True,
                         )
                 else:
                     logger.info(
-                        "シリアルプロセッサが無効なため、「Swan」ギフトのキュー追加はスキップされました。"
+                        "シリアルプロセッサが無効なため、「Heart Me」ギフトのキュー追加はスキップされました。"
                     )
 
         @tiktok_client.on(DisconnectEvent)
