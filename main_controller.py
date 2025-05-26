@@ -187,20 +187,16 @@ async def main():
 
             if gift_name == "You're awesome":
                 logger.info(
-                    f"「You're awesome」ギフトを検出しました。送信者: {sender_name}, 個数: {event.repeat_count}"
+                    f"「You're awesome」ギフトを検出しました。送信者: {sender_name}, 現在のコンボ数: {event.repeat_count}"
                 )
                 if _serial_processor_ref:
                     try:
                         logger.info(
-                            f"シリアル処理のため、「You're awesome」ギフトを {event.repeat_count} 個、個別にキューに追加します。"
+                            f"シリアル処理のため、「You're awesome」ギフト (コンボ数: {event.repeat_count}) を1個キューに追加します。"
                         )
-                        for i in range(event.repeat_count):
-                            await _serial_processor_ref.add_gift_item(gift_name)
-                            logger.debug(
-                                f"「You're awesome」ギフト ({i+1}/{event.repeat_count}) をキューに追加しました。"
-                            )
+                        await _serial_processor_ref.add_gift_item(gift_name)
                         logger.info(
-                            f"{event.repeat_count}個の「You're awesome」ギフトのキュー追加が完了しました。"
+                            f"「You're awesome」ギフト (コンボ数: {event.repeat_count}) のキュー追加が完了しました。"
                         )
                     except Exception as e:
                         logger.error(
