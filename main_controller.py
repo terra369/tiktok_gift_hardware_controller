@@ -141,8 +141,8 @@ async def main():
                 serial_processor = SerialGiftProcessor(
                     port=serial_port,
                     baud_rate=baud_rate,
-                    ready_signal=ready_signal,
-                    gift_command=gift_command,
+                    ready_signal_expected=ready_signal,
+                    gift_command_to_send=gift_command,
                     gift_queue=gift_queue,
                     process_cooldown=process_cooldown,
                 )

@@ -13,8 +13,8 @@ class SerialGiftProcessor:
         self,
         port: str,
         baud_rate: int,
-        ready_signal: str,
-        gift_command: str,
+        ready_signal_expected: str,
+        gift_command_to_send: str,
         gift_queue: asyncio.Queue,
         process_cooldown: float,
     ):
@@ -24,15 +24,15 @@ class SerialGiftProcessor:
 
         :param port: Arduinoが接続されているCOMポート。
         :param baud_rate: ボーレート。
-        :param ready_signal: Arduinoからの準備完了信号。
-        :param gift_command: Arduinoへ送信するギフト処理コマンド。
+        :param ready_signal_expected: Arduinoからの準備完了信号。
+        :param gift_command_to_send: Arduinoへ送信するギフト処理コマンド。
         :param gift_queue: 処理対象のギフト情報を格納するasyncio.Queue。
         :param process_cooldown: ギフト処理後のクールダウン時間（秒）。
         """
         self.port = port
         self.baud_rate = baud_rate
-        self.ready_signal = ready_signal.strip()
-        self.gift_command = gift_command
+        self.ready_signal_expected = ready_signal_expected.strip()
+        self.gift_command_to_send = gift_command_to_send
         self.gift_queue = gift_queue
         self.process_cooldown = process_cooldown
 
@@ -94,26 +94,26 @@ class SerialGiftProcessor:
                             .strip()
                         )
                         logger.debug(f"シリアル受信: '{line}'")
-                        if line == self.ready_signal:
+                        if line == self.ready_signal_expected:
                             logger.info(
-                                f"Arduinoから '{self.ready_signal}' 信号を受信しました。"
+                                f"Arduinoから '{self.ready_signal_expected}' 信号を受信しました。"
                                 f"クールダウン残り: {max(0, self.process_cooldown - (current_time - self._last_processed_time)):.1f}秒"
                             )
                             gift_info = self.gift_queue.get_nowait()
                             logger.info(f"キューからギフトを取得: {gift_info}")
 
-                            command_to_send = (self.gift_command + "\n").encode("utf-8")
+                            command_to_send = (self.gift_command_to_send + "\n").encode("utf-8")
                             self.serial_conn.write(command_to_send)
                             self.serial_conn.flush()
 
                             self._last_processed_time = time.time()
                             self.gift_queue.task_done()
                             logger.info(
-                                f"ギフトコマンド '{self.gift_command}' をArduinoに送信しました。ギフト: {gift_info['name']}"
+                                f"ギフトコマンド '{self.gift_command_to_send}' をArduinoに送信しました。ギフト: {gift_info['name']}"
                             )
                         elif line:
                             logger.warning(
-                                f"Arduinoから予期しない信号を受信: '{line}' (期待値: '{self.ready_signal}')"
+                                f"Arduinoから予期しない信号を受信: '{line}' (期待値: '{self.ready_signal_expected}')"
                             )
                     else:
                         pass
