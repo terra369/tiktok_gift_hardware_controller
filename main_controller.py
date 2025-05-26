@@ -127,8 +127,8 @@ async def main():
         tiktok_client = TikTokLiveClient(
             unique_id=f"@{tiktok_username}",
             ws_kwargs={
-                "ping_interval": 20.0,  # WebSocket ping interval
-                "timeout": 30.0,  # WebSocket ping timeout
+                "ping_interval": 20.0,
+                "timeout": 30.0,
             },
         )
 
