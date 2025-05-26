@@ -124,7 +124,13 @@ async def main():
             "Application", "TIKTOK_RECONNECT_DELAY", fallback=60
         )
 
-        tiktok_client = TikTokLiveClient(unique_id=f"@{tiktok_username}")
+        tiktok_client = TikTokLiveClient(
+            unique_id=f"@{tiktok_username}",
+            ws_kwargs={
+                "ping_interval": 20.0,  # WebSocket ping interval
+                "timeout": 30.0,  # WebSocket ping timeout
+            },
+        )
 
         serial_port = config.get("Serial", "PORT", fallback=None)
         baud_rate = config.getint("Serial", "BAUD_RATE", fallback=9600)
@@ -374,12 +380,12 @@ async def main():
 
         if tiktok_client and tiktok_client.connected:
             logger.info("シャットダウン時にTikTokクライアントを切断します...")
-            await tiktok_client.stop()
+            await tiktok_client.disconnect()
             logger.info("TikTokクライアントを正常に切断しました。")
 
         if _serial_processor_ref:
             logger.info("シリアルプロセッサを停止しています...")
-            _serial_processor_ref.stop()
+            _serial_processor_ref.stop_processing()
             logger.info("シリアルプロセッサを停止しました。")
 
         remaining_tasks = [
@@ -402,7 +408,7 @@ def signal_handler(sig, frame):
     global _serial_processor_ref
     if _serial_processor_ref:
         logger.info("シグナルハンドラ: シリアルプロセッサを停止しています...")
-        _serial_processor_ref.stop()
+        _serial_processor_ref.stop_processing()
         logger.info("シグナルハンドラ: シリアルプロセッサを停止しました。")
     shutdown_event.set()
 
