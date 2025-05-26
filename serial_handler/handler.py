@@ -31,7 +31,7 @@ class SerialGiftProcessor:
         """
         self.port = port
         self.baud_rate = baud_rate
-        self.ready_signal = ready_signal.strip()  # 末尾改行を削除
+        self.ready_signal = ready_signal.strip()
         self.gift_command = gift_command
         self.gift_queue = gift_queue
         self.process_cooldown = process_cooldown
@@ -123,7 +123,7 @@ class SerialGiftProcessor:
                         logger.info("シリアル再接続に成功しました。")
                     else:
                         logger.warning("シリアル再接続に失敗。5秒待機します。")
-                        self._stop_event.wait(5)  # 停止イベントを待ちつつスリープ
+                        self._stop_event.wait(5)
 
                 time.sleep(0.1)
 
