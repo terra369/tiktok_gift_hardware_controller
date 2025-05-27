@@ -191,49 +191,52 @@ async def main():
                 f"ギフト受信: {sender_name} さんから「{gift_name}」x{event.repeat_count}"
             )
 
-            if gift_name == "Heart Me":
+            if gift_name == "You're awesome":
                 # Log event details for debugging
                 log_msg = (
-                    f"「Heart Me」ギフトイベント受信。送信者: {sender_name}, "
+                    f"「You're awesome」ギフトイベント受信。送信者: {sender_name}, "
                     f"repeat_count: {getattr(event, 'repeat_count', 'N/A')}, "
                     f"repeat_end: {getattr(event, 'repeat_end', 'N/A')}"
                 )
                 logger.info(log_msg)
 
-                # Process only if it's the end of a repeat sequence (or a single gift marked as such)
-                if getattr(event, "repeat_end", False):
+                # Process if it's the end of a repeat sequence OR a single gift
+                if (
+                    getattr(event, "repeat_end", False)
+                    or getattr(event, "repeat_count", 1) == 1
+                ):
                     count_to_add = getattr(
                         event, "repeat_count", 1
-                    )  # Get the total count from the combo
+                    )  # Get the total count from the combo or 1 for single
                     logger.info(
-                        f"イベントが repeat_end=True のため、「Heart Me」ギフト (最終コンボ数: {event.repeat_count}、合計 {count_to_add} 個) を処理します。"
+                        f"「You're awesome」ギフト (コンボ数/単発: {event.repeat_count}、処理対象数: {count_to_add} 個) を処理します。"
                     )
                     if _serial_processor_ref:
                         try:
                             logger.info(
-                                f"シリアル処理のため、「Heart Me」ギフトを合計 {count_to_add} 個キューに追加します。"
+                                f"シリアル処理のため、「You're awesome」ギフトを合計 {count_to_add} 個キューに追加します。"
                             )
                             for i in range(count_to_add):
                                 await _serial_processor_ref.add_gift_item(gift_name)
                                 # 個別の追加ログはデバッグレベルにすることも検討（大量の場合ログが冗長になるため）
                                 logger.debug(
-                                    f"「Heart Me」ギフト ({i+1}/{count_to_add}) をキューに追加しました。"
+                                    f"「You're awesome」ギフト ({i+1}/{count_to_add}) をキューに追加しました。"
                                 )
                             logger.info(
-                                f"「Heart Me」ギフト、合計 {count_to_add} 個のキュー追加が完了しました。"
+                                f"「You're awesome」ギフト、合計 {count_to_add} 個のキュー追加が完了しました。"
                             )
                         except Exception as e:
                             logger.error(
-                                f"「Heart Me」ギフトの処理キュー追加中にエラー: {e}",
+                                f"「You're awesome」ギフトの処理キュー追加中にエラー: {e}",
                                 exc_info=True,
                             )
                     else:
                         logger.info(
-                            "シリアルプロセッサが無効なため、「Heart Me」ギフトのキュー追加はスキップされました。"
+                            "シリアルプロセッサが無効なため、「You're awesome」ギフトのキュー追加はスキップされました。"
                         )
                 else:
                     logger.info(
-                        f"イベントが repeat_end=False (または属性なし) のため、「Heart Me」ギフト (コンボ数: {event.repeat_count}) の処理をスキップします。"
+                        f"イベントが repeat_end=False かつ repeat_count > 1 のため、「You're awesome」ギフト (コンボ数: {event.repeat_count}) の処理をスキップします（コンボ途中）。"
                     )
 
         @tiktok_client.on(DisconnectEvent)
