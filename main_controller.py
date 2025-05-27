@@ -205,38 +205,34 @@ async def main():
                     getattr(event, "repeat_end", False)
                     or getattr(event, "repeat_count", 1) == 1
                 ):
-                    count_to_add = getattr(
-                        event, "repeat_count", 1
-                    )  # Get the total count from the combo or 1 for single
+                    actual_process_count = 1
                     logger.info(
-                        f"「You're awesome」ギフト (コンボ数/単発: {event.repeat_count}、処理対象数: {count_to_add} 個) を処理します。"
+                        f"「{gift_name}」ギフト (元々のコンボ数/単発: {event.repeat_count}、シリアル処理回数: {actual_process_count} 回) を処理します。"
                     )
                     if _serial_processor_ref:
                         try:
                             logger.info(
-                                f"シリアル処理のため、「You're awesome」ギフトを合計 {count_to_add} 個キューに追加します。"
+                                f"シリアル処理のため、「{gift_name}」ギフトを {actual_process_count} 回キューに追加します。"
                             )
-                            for i in range(count_to_add):
-                                await _serial_processor_ref.add_gift_item(gift_name)
-                                # 個別の追加ログはデバッグレベルにすることも検討（大量の場合ログが冗長になるため）
-                                logger.debug(
-                                    f"「You're awesome」ギフト ({i+1}/{count_to_add}) をキューに追加しました。"
-                                )
+                            await _serial_processor_ref.add_gift_item(gift_name)
+                            logger.debug(
+                                f"「{gift_name}」ギフトをキューに追加しました。"
+                            )
                             logger.info(
-                                f"「You're awesome」ギフト、合計 {count_to_add} 個のキュー追加が完了しました。"
+                                f"「{gift_name}」ギフト、合計 {actual_process_count} 回のキュー追加が完了しました。"
                             )
                         except Exception as e:
                             logger.error(
-                                f"「You're awesome」ギフトの処理キュー追加中にエラー: {e}",
+                                f"「{gift_name}」ギフトの処理キュー追加中にエラー: {e}",
                                 exc_info=True,
                             )
                     else:
                         logger.info(
-                            "シリアルプロセッサが無効なため、「You're awesome」ギフトのキュー追加はスキップされました。"
+                            "シリアルプロセッサが無効なため、「{gift_name}」ギフトのキュー追加はスキップされました。"
                         )
                 else:
                     logger.info(
-                        f"イベントが repeat_end=False かつ repeat_count > 1 のため、「You're awesome」ギフト (コンボ数: {event.repeat_count}) の処理をスキップします（コンボ途中）。"
+                        f"イベントが repeat_end=False かつ repeat_count > 1 のため、「{gift_name}」ギフト (コンボ数: {event.repeat_count}) の処理をスキップします（コンボ途中）。"
                     )
 
         @tiktok_client.on(DisconnectEvent)
