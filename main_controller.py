@@ -8,11 +8,18 @@ from pathlib import Path
 
 from serial_handler.handler import SerialGiftProcessor
 from TikTokLive import TikTokLiveClient
-from TikTokLive.events import ConnectEvent, GiftEvent, DisconnectEvent
+from TikTokLive.events import (
+    ConnectEvent,
+    GiftEvent,
+    DisconnectEvent,
+    CommentEvent,  # ★ 追加
+)
 from TikTokLive.client.errors import (
     UserOfflineError,
     AlreadyConnectedError,
 )
+
+from audio_tts import speak  # ★ 追加 ─ コメント読み上げユーティリティ
 
 logger = logging.getLogger()
 shutdown_event = asyncio.Event()
@@ -234,6 +241,27 @@ async def main():
                     logger.info(
                         f"イベントが repeat_end=False かつ repeat_count > 1 のため、「{gift_name}」ギフト (コンボ数: {event.repeat_count}) の処理をスキップします（コンボ途中）。"
                     )
+
+        # ★ コメント読み上げハンドラ ---------------
+        @tiktok_client.on(CommentEvent)
+        async def on_comment(event: CommentEvent):
+            """TikTok Live のコメントを受信したら読み上げる"""
+            commenter = (
+                event.user.nickname
+                if event.user and event.user.nickname
+                else event.user.unique_id if event.user else "匿名"
+            )
+            text = event.comment
+            logger.info(f"コメント受信: {commenter}『{text}』")
+
+            try:
+                await asyncio.to_thread(
+                    speak, text
+                )  # TTS → 再生をブロッキング扱いでスレッド移譲
+            except Exception as e:
+                logger.error(f"コメント読み上げ中にエラー: {e}", exc_info=True)
+
+        # ------------------------------------------
 
         @tiktok_client.on(DisconnectEvent)
         async def on_disconnect(_: DisconnectEvent):

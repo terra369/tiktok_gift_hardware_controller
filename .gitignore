@@ -12,6 +12,7 @@ ENV/
 VENV/
 *.egg-info/
 .DS_Store
+config.py
 
 # 設定ファイル (もしローカル固有の設定を含む場合で、テンプレートだけを管理したい場合)
 # config/settings.ini  # コメントアウトしておき、必要なら有効化。
