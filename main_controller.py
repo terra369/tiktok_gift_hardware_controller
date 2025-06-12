@@ -62,7 +62,7 @@ def load_config(config_path: str) -> configparser.ConfigParser:
     try:
         config.read(config_path, encoding="utf-8")
         required_sections = {
-            "TikTok": ["USERNAME"],
+            "TikTok": ["USERNAME", "TARGET_GIFT_NAME"],
             "Serial": ["PORT", "BAUD_RATE", "READY_SIGNAL", "GIFT_COMMAND"],
             "Application": [
                 "GIFT_PROCESS_COOLDOWN",
@@ -119,6 +119,11 @@ async def main():
         port = config.get("Serial", "PORT")
 
         tiktok_username = config.get("TikTok", "USERNAME")
+        target_gift_name = config.get("TikTok", "TARGET_GIFT_NAME", fallback="").strip()
+        if not target_gift_name:
+            logger.error("設定ファイルに 'TARGET_GIFT_NAME' が設定されていません。")
+            return
+
         FETCH_GIFT_INFO = True
         RECONNECT_DELAY = config.getint(
             "Application", "TIKTOK_RECONNECT_DELAY", fallback=60
@@ -187,57 +192,50 @@ async def main():
                 else event.user.unique_id if event.user else "不明な送信者"
             )
 
+            # 連続ギフトの中間イベント(repeat_end=0)は無視する
+            if hasattr(event, "repeat_end") and event.repeat_end == 0:
+                logger.info(
+                    f"連続ギフトの中間イベントをスキップ: {sender_name} さんから「{gift_name}」x{event.repeat_count}"
+                )
+                return
+
             logger.info(
                 f"ギフト受信: {sender_name} さんから「{gift_name}」x{event.repeat_count}"
             )
 
-            if gift_name == "You're awesome":
-                # Log event details for debugging
+            # 設定されたギフト名と一致するかチェック
+            if gift_name == target_gift_name:
                 log_msg = (
-                    f"「You're awesome」ギフトイベント受信。送信者: {sender_name}, "
-                    f"repeat_count: {getattr(event, 'repeat_count', 'N/A')}, "
+                    f"ターゲットギフト「{target_gift_name}」を検知。送信者: {sender_name}, "
+                    f"repeat_count: {event.repeat_count}, "
                     f"repeat_end: {getattr(event, 'repeat_end', 'N/A')}"
                 )
                 logger.info(log_msg)
 
-                # Process if it's the end of a repeat sequence OR a single gift
-                if (
-                    getattr(event, "repeat_end", False)
-                    or getattr(event, "repeat_count", 1) == 1
-                ):
-                    actual_process_count = 1
-                    logger.info(
-                        f"「{gift_name}」ギフト (元々のコンボ数/単発: {event.repeat_count}、シリアル処理回数: {actual_process_count} 回) を処理します。"
-                    )
-                    if _serial_processor_ref:
-                        try:
-                            logger.info(
-                                f"シリアル処理のため、「{gift_name}」ギフトを {actual_process_count} 回キューに追加します。"
-                            )
-                            await _serial_processor_ref.add_gift_item(gift_name)
-                            logger.debug(
-                                f"「{gift_name}」ギフトをキューに追加しました。"
-                            )
-                            logger.info(
-                                f"「{gift_name}」ギフト、合計 {actual_process_count} 回のキュー追加が完了しました。"
-                            )
-                        except Exception as e:
-                            logger.error(
-                                f"「{gift_name}」ギフトの処理キュー追加中にエラー: {e}",
-                                exc_info=True,
-                            )
-                    else:
+                # 1回だけのギフトも repeat_count=1 となる
+                count_to_add = event.repeat_count
+                logger.info(f"キューに {count_to_add} 個のギフトを追加します。")
+
+                for i in range(count_to_add):
+                    try:
+                        gift_item = {"name": gift_name}
+                        gift_queue.put_nowait(gift_item)
                         logger.info(
-                            "シリアルプロセッサが無効なため、「{gift_name}」ギフトのキュー追加はスキップされました。"
+                            f"ギフトをキューに追加しました ({i+1}/{count_to_add})。現在のキューサイズ: {gift_queue.qsize()}"
                         )
-                else:
-                    logger.info(
-                        f"イベントが repeat_end=False かつ repeat_count > 1 のため、「{gift_name}」ギフト (コンボ数: {event.repeat_count}) の処理をスキップします（コンボ途中）。"
-                    )
+                    except asyncio.QueueFull:
+                        logger.warning(
+                            f"ギフトキューが満杯です ({i+1}/{count_to_add})。ギフトを破棄します。"
+                        )
+                        break  # キューが満杯ならループを抜ける
+            else:
+                logger.debug(
+                    f"ターゲットギフト({target_gift_name})ではないためスキップ: {gift_name}"
+                )
 
         @tiktok_client.on(DisconnectEvent)
         async def on_disconnect(_: DisconnectEvent):
-            logger.info(f"{tiktok_username} との接続が切断されました。")
+            logger.warning("TikTokから切断されました。")
             _connected_event.clear()
 
         while not shutdown_event.is_set():
